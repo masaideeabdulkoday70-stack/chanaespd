@@ -1,55 +1,161 @@
-<style>
-  /* แก้สีปุ่มแท็บให้ขาวชัดเจนเวลาเลือก */
-  .nav-pills .nav-link.active { 
-    background-color: #4361ee !important; 
-    color: #ffffff !important; 
-    box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
-    border: none;
-    font-weight: 600;
-  }
-  .nav-link { color: #64748b; transition: 0.3s; }
-</style>
-
-<script>
-  function render(filter, el) {
-    if(el) {
-      document.querySelectorAll('#tabs .nav-link').forEach(b => b.classList.remove('active'));
-      el.classList.add('active');
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบสารสนเทศ ศพด.จะแนะ</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    :root { --main: #4361ee; --bg: #f8faff; }
+    body { font-family: 'Sarabun', sans-serif; background: var(--bg); display: flex; margin: 0; min-height: 100vh; color: #2b2d42; }
+    
+    /* Sidebar */
+    .sidebar { width: 260px; background: #fff; border-right: 1px solid #eee; position: fixed; height: 100vh; z-index: 100; }
+    .nav-link { color: #64748b; padding: 12px 20px; cursor: pointer; border-radius: 12px; margin: 4px 16px; text-decoration: none; display: block; transition: 0.2s; }
+    .nav-link.active { background: #eff6ff; color: var(--main) !important; font-weight: 600; }
+    
+    /* Content Area */
+    .main-content { margin-left: 260px; width: calc(100% - 260px); padding: 40px; }
+    .card-ui { background: #fff; border-radius: 20px; padding: 25px; border: 1px solid #f0f0f0; box-shadow: 0 4px 20px rgba(0,0,0,0.02); margin-bottom: 25px; }
+    
+    /* ปุ่มแท็บตำแหน่ง - สีขาวชัดเจนบนพื้นน้ำเงิน */
+    .nav-pills .nav-link { border: 1px solid #e2e8f0; margin-right: 10px; color: #64748b; background: #fff; border-radius: 30px; padding: 8px 25px; font-weight: 400; }
+    .nav-pills .nav-link.active { 
+      background-color: var(--main) !important; 
+      color: #ffffff !important; 
+      box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
+      border-color: var(--main);
+      font-weight: 600;
     }
     
-    let summary = {};
-    // ดึงชื่อและตำแหน่งจาก cache โดยล้างช่องว่างออก (Trim)
-    cache.staff.forEach(s => {
-      let cleanPos = s.pos ? s.pos.toString().trim() : "ไม่ระบุตำแหน่ง";
-      summary[s.name] = { pos: cleanPos, k:0, p:0, pk:0, s:0 };
-    });
-
-    // รวมยอดวันลา
-    cache.leaves.forEach(l => {
-      let cleanName = l.name ? l.name.toString().trim() : "";
-      if(summary[cleanName]) {
-        if(l.type.includes('กิจ')) summary[cleanName].k += l.days;
-        else if(l.type.includes('ป่วย')) summary[cleanName].p += l.days;
-        else if(l.type.includes('พักผ่อน')) summary[cleanName].pk += l.days;
-        else if(l.type.includes('สาย')) summary[cleanName].s += 1;
-      }
-    });
-
-    let h = "", t = { k:0, p:0, pk:0, s:0 };
-    Object.keys(summary).sort().forEach(name => {
-      let item = summary[name];
-      // ใช้ .includes เพื่อให้ดึงข้อมูลได้แม่นยำขึ้น
-      if(filter === 'ทั้งหมด' || item.pos.includes(filter)) {
-        t.k += item.k; t.p += item.p; t.pk += item.pk; t.s += item.s;
-        h += `<tr><td class="text-start ps-4 fw-bold">${name}</td><td><small class="badge bg-light text-muted border">${item.pos}</small></td><td>${item.k}</td><td>${item.p}</td><td>${item.pk}</td><td>${item.s}</td></tr>`;
-      }
-    });
+    .table thead { background: #f8f9fa; color: var(--main); border-bottom: 2px solid #eff6ff; }
+    .total-row { background: #1a1c2e !important; color: white !important; font-weight: 600; }
     
-    // แสดงยอดรวมท้ายตาราง
-    h += `<tr class="total-row" style="background:#1a1c2e; color:white;">
-            <td colspan="2">รวมยอดกลุ่ม (${filter})</td>
-            <td>${t.k}</td><td>${t.p}</td><td>${t.pk}</td><td>${t.s}</td>
-          </tr>`;
-    document.getElementById('tbody').innerHTML = h;
-  }
-</script>
+    /* หน้าจอโหลดข้อมูล */
+    .loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
+    
+    @media (max-width: 768px) {
+      .sidebar { width: 70px; }
+      .sidebar h6, .sidebar span { display: none; }
+      .main-content { margin-left: 70px; width: calc(100% - 70px); padding: 15px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading" class="loading-screen">
+    <div class="spinner-border text-primary mb-3" role="status"></div>
+    <div class="text-muted small">ศพด.จะแนะ กำลังเชื่อมต่อฐานข้อมูล...</div>
+  </div>
+
+  <div class="sidebar">
+    <div class="p-4 text-center border-bottom mb-3">
+        <h6 class="fw-bold text-primary mb-0">ศพด.จะแนะ</h6>
+        <small class="text-muted small">ระบบสารสนเทศบุคลากร</small>
+    </div>
+    <div class="nav flex-column">
+      <div class="nav-link active" id="btn-report" onclick="switchPage('report', this)"><i class="fas fa-users-cog me-2"></i><span>สรุป 25 ท่าน</span></div>
+      <div class="nav-link" id="btn-leave" onclick="switchPage('leave', this)"><i class="fas fa-history me-2"></i><span>ประวัติการลา</span></div>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <h4 class="fw-bold mb-4" id="pageTitle">รายงานสรุปวันลาสะสม</h4>
+    
+    <div id="page-report" class="page-content">
+      <div class="card-ui">
+        <div class="nav nav-pills mb-4" id="tabs">
+          <button class="nav-link active" onclick="render('ทั้งหมด', this)">ทั้งหมด</button>
+          <button class="nav-link" onclick="render('ครูข้าราชการ', this)">ครูข้าราชการ</button>
+          <button class="nav-link" onclick="render('ผู้ดูแลเด็ก', this)">ผู้ดูแลเด็ก</button>
+          <button class="nav-link" onclick="render('พี่เลี้ยง', this)">พี่เลี้ยง</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table text-center align-middle">
+            <thead><tr class="small"><th class="text-start ps-4">ชื่อ-นามสกุล</th><th>ตำแหน่ง</th><th>กิจ</th><th>ป่วย</th><th>พักผ่อน</th><th>สาย</th></tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="page-leave" class="page-content d-none">
+      <div class="card-ui p-0 overflow-hidden">
+        <div class="table-responsive">
+          <table class="table mb-0"><tbody id="leaveBody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ⚠️ นำ URL Web App ที่ได้จาก Gmail (Everyone/Anyone) มาวางที่นี่
+    const API_URL = 'https://script.google.com/macros/s/AKfycbxzZLWEZ2GhKUXG6hOIU16F5OYN6nsBX3E6oAm7hYqnOAwG_Zh9i46Jq-zVTg9FaAML/exec'; 
+
+    let cache = { staff: [], leaves: [] };
+
+    window.onload = () => {
+      if(API_URL.includes('ใส่_URL')) {
+        alert('กรุณาแก้ไข API_URL ในไฟล์ index.html ก่อนครับ');
+        return;
+      }
+      
+      fetch(API_URL)
+        .then(r => r.json())
+        .then(data => {
+          cache = data;
+          render('ทั้งหมด');
+          document.getElementById('loading').style.display = 'none';
+        })
+        .catch(err => {
+          console.error(err);
+          alert('ไม่สามารถเชื่อมต่อข้อมูลได้ โปรดตรวจสอบสิทธิ์ "Anyone" ใน Apps Script');
+        });
+    };
+
+    function switchPage(p, el) {
+      document.querySelectorAll('.page-content').forEach(x => x.classList.add('d-none'));
+      document.querySelectorAll('.nav-link').forEach(x => x.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('page-' + p).classList.remove('d-none');
+      if(p === 'leave') renderLeave();
+    }
+
+    function render(filter, el) {
+      if(el) {
+        document.querySelectorAll('#tabs .nav-link').forEach(b => b.classList.remove('active'));
+        el.classList.add('active');
+      }
+      
+      let summary = {};
+      cache.staff.forEach(s => summary[s.name] = { pos: s.pos, k:0, p:0, pk:0, s:0 });
+      
+      cache.leaves.forEach(l => {
+        if(summary[l.name]) {
+          if(l.type.includes('กิจ')) summary[l.name].k += l.days;
+          else if(l.type.includes('ป่วย')) summary[l.name].p += l.days;
+          else if(l.type.includes('พักผ่อน')) summary[l.name].pk += l.days;
+          else if(l.type.includes('สาย')) summary[l.name].s += 1;
+        }
+      });
+
+      let h = "", t = { k:0, p:0, pk:0, s:0 };
+      Object.keys(summary).sort().forEach(name => {
+        let item = summary[name];
+        if(filter === 'ทั้งหมด' || item.pos.includes(filter)) {
+          t.k += item.k; t.p += item.p; t.pk += item.pk; t.s += item.s;
+          h += `<tr><td class="text-start ps-4 fw-bold">${name}</td><td><small class="badge bg-light text-muted border">${item.pos}</small></td><td>${item.k}</td><td>${item.p}</td><td>${item.pk}</td><td>${item.s}</td></tr>`;
+        }
+      });
+      h += `<tr class="total-row"><td colspan="2">รวมยอดกลุ่ม (${filter})</td><td>${t.k}</td><td>${t.p}</td><td>${t.pk}</td><td>${t.s}</td></tr>`;
+      document.getElementById('tbody').innerHTML = h;
+    }
+
+    function renderLeave() {
+      document.getElementById('leaveBody').innerHTML = cache.leaves.map(l => `<tr><td class="ps-4"><b>${l.name}</b><br><small class="text-muted">${l.type}</small></td><td>${l.date}<br><small>${l.days} วัน</small></td><td class="small">${l.reason}</td></tr>`).join('');
+    }
+  </script>
+</body>
+</html>
